@@ -1,0 +1,272 @@
+----------------------------------------
+-- Minigameservice
+-- Made by; moudithedev (Comms; moudi_gamer)
+-- 23/08/2025
+----------------------------------------
+
+local Players=game:GetService("Players")
+local RS=game:GetService("ReplicatedStorage")
+
+local PromptRE=RS:FindFirstChild("MiniGamePromptRE") or Instance.new("RemoteEvent",RS)
+PromptRE.Name="MiniGamePromptRE"
+local JoinRE=RS:FindFirstChild("MiniGameJoinRE") or Instance.new("RemoteEvent",RS)
+JoinRE.Name="MiniGameJoinRE"
+local StartRE=RS:FindFirstChild("MiniGameStartRE") or Instance.new("RemoteEvent",RS)
+StartRE.Name="MiniGameStartRE"
+local EndRE=RS:FindFirstChild("MiniGameEndRE") or Instance.new("RemoteEvent",RS)
+EndRE.Name="MiniGameEndRE"
+
+local INTERVAL=30
+local DURATION=120
+local ACCEPT_WINDOW=10
+
+local arena=workspace:WaitForChild("MiniGame_Teleport")
+local exitPad=workspace:WaitForChild("MiniGame_Return")
+local coinsFolder=workspace:WaitForChild("MiniGameCoins")
+
+local active={}
+local coinConns={}
+
+local function bindCoin(p)
+	if not p:IsA("BasePart") then return end
+	if coinConns[p] then coinConns[p]:Disconnect() end
+	coinConns[p]=p.Touched:Connect(function(hit)
+		local plr=Players:GetPlayerFromCharacter(hit.Parent)
+		if not plr or not active[plr] then return end
+		local ls=plr:FindFirstChild("leaderstats"); if not ls then return end
+		local c=ls:FindFirstChild("Coins"); if not c then return end
+		local r=p:GetAttribute("Reward") or 1
+		c.Value+=r
+		p:Destroy()
+	end)
+end
+
+for _,d in ipairs(coinsFolder:GetDescendants()) do bindCoin(d) end
+coinsFolder.DescendantAdded:Connect(bindCoin)
+
+local function tp(plr,part)
+	local ch=plr.Character; if not ch then return end
+	local hrp=ch:FindFirstChild("HumanoidRootPart"); if not hrp then return end
+	hrp.CFrame=part.CFrame+Vector3.new(0,3,0)
+end
+
+local function startFor(plr)
+	if active[plr] then return end
+	active[plr]=true
+	local endsAt=os.time()+DURATION
+	tp(plr,arena)
+	StartRE:FireClient(plr,endsAt)
+	task.delay(DURATION,function()
+		if not active[plr] then return end
+		active[plr]=nil
+		tp(plr,exitPad)
+		EndRE:FireClient(plr)
+	end)
+end
+
+JoinRE.OnServerEvent:Connect(function(plr)
+	if active[plr] then return end
+	startFor(plr)
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(INTERVAL)
+		for _,plr in ipairs(Players:GetPlayers()) do
+			if not active[plr] then
+				PromptRE:FireClient(plr,ACCEPT_WINDOW)
+			end
+		end
+		task.wait(ACCEPT_WINDOW)
+	end
+end)
+
+Players.PlayerRemoving:Connect(function(p) active[p]=nil end)
+
+
+----------------------------------------
+-- MiniGameclient
+-- Made by; moudithedev (Comms; moudi_gamer)
+-- 23/08/2025
+----------------------------------------
+
+local RS=game:GetService("ReplicatedStorage")
+local TweenService=game:GetService("TweenService")
+local plr=game.Players.LocalPlayer
+
+local PromptRE=RS:WaitForChild("MiniGamePromptRE")
+local JoinRE=RS:WaitForChild("MiniGameJoinRE")
+local StartRE=RS:WaitForChild("MiniGameStartRE")
+local EndRE=RS:WaitForChild("MiniGameEndRE")
+
+local FADE_TIME = 1.5
+
+local gui=Instance.new("ScreenGui")
+gui.Name="MiniGameUI"
+gui.IgnoreGuiInset=true
+gui.ResetOnSpawn=false
+gui.Parent=plr:WaitForChild("PlayerGui")
+
+local promptFrame=Instance.new("Frame",gui)
+promptFrame.Size=UDim2.new(0,420,0,70)
+promptFrame.Position=UDim2.new(0.5,-210,0.12,0)
+promptFrame.BackgroundColor3=Color3.fromRGB(40,40,40)
+promptFrame.Visible=false
+promptFrame.ZIndex=50
+Instance.new("UICorner",promptFrame).CornerRadius=UDim.new(1,0)
+
+local lbl=Instance.new("TextLabel",promptFrame)
+lbl.Size=UDim2.new(1,-20,0,30)
+lbl.Position=UDim2.new(0,10,0,5)
+lbl.BackgroundTransparency=1
+lbl.Font=Enum.Font.GothamBold
+lbl.TextSize=22
+lbl.TextColor3=Color3.new(1,1,1)
+lbl.TextStrokeTransparency=0
+lbl.ZIndex=51
+lbl.Text="Mini-Game starting!"
+
+local yesBtn=Instance.new("TextButton",promptFrame)
+yesBtn.Size=UDim2.new(0.4,0,0,30)
+yesBtn.Position=UDim2.new(0.05,0,1,-35)
+yesBtn.BackgroundColor3=Color3.fromRGB(0,200,100)
+yesBtn.Text="YES"
+yesBtn.Font=Enum.Font.GothamBlack
+yesBtn.TextSize=22
+yesBtn.TextColor3=Color3.new(1,1,1)
+yesBtn.ZIndex=51
+Instance.new("UICorner",yesBtn).CornerRadius=UDim.new(1,0)
+
+local noBtn=Instance.new("TextButton",promptFrame)
+noBtn.Size=UDim2.new(0.4,0,0,30)
+noBtn.Position=UDim2.new(0.55,0,1,-35)
+noBtn.BackgroundColor3=Color3.fromRGB(200,60,60)
+noBtn.Text="NO"
+noBtn.Font=Enum.Font.GothamBlack
+noBtn.TextSize=22
+noBtn.TextColor3=Color3.new(1,1,1)
+noBtn.ZIndex=51
+Instance.new("UICorner",noBtn).CornerRadius=UDim.new(1,0)
+
+local timerLbl=Instance.new("TextLabel",gui)
+timerLbl.Size=UDim2.new(0,320,0,60)
+timerLbl.Position=UDim2.new(0.5,-160,0.05,0)
+timerLbl.BackgroundTransparency=1
+timerLbl.Font=Enum.Font.GothamBlack
+timerLbl.TextSize=36
+timerLbl.TextColor3=Color3.fromRGB(255,255,0)
+timerLbl.TextStrokeTransparency=0
+timerLbl.Visible=false
+timerLbl.ZIndex=60
+
+local iris=Instance.new("Frame",gui)
+iris.Size=UDim2.new(0,0,0,0)
+iris.Position=UDim2.new(0.5,0,0.5,0)
+iris.AnchorPoint=Vector2.new(0.5,0.5)
+iris.BackgroundColor3=Color3.new(0,0,0)
+iris.BorderSizePixel=0
+iris.Visible=false
+iris.ZIndex=100
+Instance.new("UICorner",iris).CornerRadius=UDim.new(1,0)
+
+local pending=false
+local acceptUntil=0
+local ticking=false
+local fadeLock=false
+
+local colors={Color3.fromRGB(255,255,0),Color3.fromRGB(255,120,0),Color3.fromRGB(255,60,60),Color3.fromRGB(255,255,255)}
+
+local function fmt(n)
+	local m=math.floor(n/60)
+	local s=n%60
+	return string.format("%02d:%02d",m,s)
+end
+
+local function tweenColor(label,toColor,time)
+	TweenService:Create(label,TweenInfo.new(time,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{TextColor3=toColor}):Play()
+end
+
+local function runTimer(endsAt)
+	ticking=true
+	timerLbl.Visible=true
+	local i=1
+	while ticking do
+		local left=math.max(0,endsAt-os.time())
+		timerLbl.Text="Time left: "..fmt(left)
+		i=(i%#colors)+1
+		tweenColor(timerLbl,colors[i],0.5)
+		if left<=0 then break end
+		task.wait(1)
+	end
+	timerLbl.Visible=false
+end
+
+local function circleFadeOnce(cb)
+	if fadeLock then return end
+	fadeLock=true
+	local cam=workspace.CurrentCamera
+	local vp=cam and cam.ViewportSize or Vector2.new(1920,1080)
+	local d=math.ceil(math.sqrt(vp.X*vp.X+vp.Y*vp.Y))*1.9
+
+	iris.Visible=true
+	iris.BackgroundTransparency=0
+	iris.Size=UDim2.new(0,0,0,0)
+
+	local ease=TweenInfo.new(FADE_TIME,Enum.EasingStyle.Quint,Enum.EasingDirection.InOut)
+	local tGrow=TweenService:Create(iris,ease,{Size=UDim2.new(0,d,0,d)})
+	tGrow:Play()
+	tGrow.Completed:Wait()
+
+	if cb then cb() end
+
+	local tShrink=TweenService:Create(iris,ease,{Size=UDim2.new(0,0,0,0)})
+	tShrink:Play()
+	tShrink.Completed:Wait()
+
+	iris.Visible=false
+	fadeLock=false
+end
+
+PromptRE.OnClientEvent:Connect(function(seconds)
+	local total=math.clamp(tonumber(seconds) or 10,5,10)
+	pending=true
+	acceptUntil=tick()+total
+	promptFrame.Visible=true
+	task.spawn(function()
+		while pending do
+			local left=math.max(0,math.floor(acceptUntil-tick()))
+			lbl.Text="Mini-Game starting! Join? ("..left..")"
+			if left<=0 then break end
+			task.wait(1)
+		end
+		if pending then
+			pending=false
+			promptFrame.Visible=false
+		end
+	end)
+end)
+
+yesBtn.MouseButton1Click:Connect(function()
+	if not pending then return end
+	pending=false
+	promptFrame.Visible=false
+	JoinRE:FireServer()
+end)
+
+noBtn.MouseButton1Click:Connect(function()
+	if not pending then return end
+	pending=false
+	promptFrame.Visible=false
+end)
+
+StartRE.OnClientEvent:Connect(function(endsAt)
+	circleFadeOnce(function() end) 
+	runTimer(endsAt)
+end)
+
+EndRE.OnClientEvent:Connect(function()
+	ticking=false
+	circleFadeOnce(function() end) 
+end)
+
+
