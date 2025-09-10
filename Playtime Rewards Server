@@ -1,0 +1,277 @@
+----------------------------------------
+-- PlaytimeRewardsServer
+-- Made by; Moudithedev (Comms; moudi_gamer)
+-- 25/08/2025
+----------------------------------------
+local Players=game:GetService("Players")
+local DSS=game:GetService("DataStoreService")
+local RS=game:GetService("ReplicatedStorage")
+local ev=RS:FindFirstChild("PlaytimeRewardsEvent") or Instance.new("RemoteEvent",RS)
+ev.Name="PlaytimeRewardsEvent"
+
+local DS=DSS:GetDataStore("PlaytimeRewards_V1")
+
+local TIERS_MIN={1,10,15,20,25,30,35,40,45}
+local REWARDS={200,400,600,800,1000,1200,1400,1600,2000}
+
+local function daykey()
+	local t=os.date("!*t")
+	return ("%04d-%03d"):format(t.year,t.yday)
+end
+
+local state={}
+
+local function load(p)
+	local ls=p:WaitForChild("leaderstats")
+	local coins=ls:WaitForChild("Coins")
+
+	local key="P_"..p.UserId
+	local ok,data=pcall(function() return DS:GetAsync(key) end)
+	local d={date=daykey(),secs=0,claimed={}}
+	if ok and typeof(data)=="table" then d=data end
+	if d.date~=daykey() then d={date=daykey(),secs=0,claimed={}} end
+	state[p]=d
+	ev:FireClient(p,"init",{tiers=TIERS_MIN,rewards=REWARDS,secs=d.secs,claimed=d.claimed})
+end
+
+local function save(p)
+	local d=state[p];if not d then return end
+	local key="P_"..p.UserId
+	pcall(function() DS:SetAsync(key,d) end)
+end
+
+Players.PlayerAdded:Connect(load)
+Players.PlayerRemoving:Connect(function(p) save(p) state[p]=nil end)
+game:BindToClose(function()
+	for _,p in ipairs(Players:GetPlayers()) do save(p) end
+end)
+
+ev.OnServerEvent:Connect(function(p,cmd,arg)
+	local d=state[p];if not d then return end
+	if cmd=="claim" then
+		local i=arg
+		if typeof(i)~="number" or i<1 or i>#TIERS_MIN then return end
+		if d.secs>=TIERS_MIN[i]*60 and not d.claimed[i] then
+			d.claimed[i]=true
+			-- Add coins to leaderstats
+			local coins=p:FindFirstChild("leaderstats") and p.leaderstats:FindFirstChild("Coins")
+			if coins then coins.Value+=REWARDS[i] end
+			save(p)
+			ev:FireClient(p,"claimed",{i=i,coins=REWARDS[i]})
+		end
+	end
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(1)
+		for p,d in pairs(state) do
+			if daykey()~=d.date then
+				d.date=daykey();d.secs=0;d.claimed={}
+			end
+			d.secs+=1
+			ev:FireClient(p,"tick",d.secs)
+		end
+	end
+end)
+
+
+----------------------------------------
+-- PlaytimeRewardsClient
+-- Made by; Moudithedev (Comms; moudi_gamer)
+-- 25/08/2025
+----------------------------------------
+local RS=game:GetService("ReplicatedStorage")
+local Players=game:GetService("Players")
+local TweenService=game:GetService("TweenService")
+local ev=RS:WaitForChild("PlaytimeRewardsEvent")
+local plr=Players.LocalPlayer
+
+local tiers,rewards,secs,claimed
+local cells={}
+local openedFor={}
+
+local sg=Instance.new("ScreenGui",plr:WaitForChild("PlayerGui"))
+sg.Name="PlaytimeRewardsUI"
+sg.ResetOnSpawn=false
+
+local frame=Instance.new("Frame",sg)
+frame.AnchorPoint=Vector2.new(.5,.5)
+frame.Position=UDim2.fromScale(.5,.5)
+frame.Size=UDim2.fromOffset(520,330)
+frame.BackgroundColor3=Color3.fromRGB(22,24,32)
+frame.BorderSizePixel=0
+frame.Visible=false
+Instance.new("UICorner",frame).CornerRadius=UDim.new(0,14)
+
+local title=Instance.new("TextLabel",frame)
+title.Size=UDim2.new(1,-60,0,40)
+title.Position=UDim2.fromOffset(10,8)
+title.BackgroundTransparency=1
+title.Text="Playtime Rewards"
+title.Font=Enum.Font.GothamBold
+title.TextSize=28
+title.TextColor3=Color3.fromRGB(255,255,255)
+title.TextXAlignment=Enum.TextXAlignment.Left
+
+local closeBtn=Instance.new("TextButton",frame)
+closeBtn.Text="X"
+closeBtn.Font=Enum.Font.GothamBold
+closeBtn.TextSize=20
+closeBtn.TextColor3=Color3.new(1,1,1)
+closeBtn.Size=UDim2.fromOffset(32,32)
+closeBtn.AnchorPoint=Vector2.new(1,0)
+closeBtn.Position=UDim2.new(1,-8,0,8)
+closeBtn.BackgroundColor3=Color3.fromRGB(180,60,60)
+Instance.new("UICorner",closeBtn).CornerRadius=UDim.new(0,8)
+closeBtn.MouseButton1Click:Connect(function() frame.Visible=false end)
+
+local resetLbl=Instance.new("TextLabel",frame)
+resetLbl.Size=UDim2.new(1,-20,0,18)
+resetLbl.Position=UDim2.fromOffset(10,44)
+resetLbl.BackgroundTransparency=1
+resetLbl.Text="Reset every 24 hours"
+resetLbl.Font=Enum.Font.Gotham
+resetLbl.TextSize=16
+resetLbl.TextColor3=Color3.fromRGB(200,205,220)
+resetLbl.TextXAlignment=Enum.TextXAlignment.Left
+
+local grid=Instance.new("Frame",frame)
+grid.Size=UDim2.fromOffset(500,170)
+grid.Position=UDim2.fromOffset(10,70)
+grid.BackgroundTransparency=1
+local layout=Instance.new("UIGridLayout",grid)
+layout.CellPadding=UDim2.fromOffset(10,10)
+layout.CellSize=UDim2.fromOffset(150,50)
+
+local footer=Instance.new("Frame",frame)
+footer.Size=UDim2.fromOffset(500,60)
+footer.Position=UDim2.fromOffset(10,250)
+footer.BackgroundTransparency=1
+
+local claimBtn=Instance.new("TextButton",footer)
+claimBtn.TextScaled=true
+claimBtn.Text="Claim"
+claimBtn.Font=Enum.Font.GothamBold
+claimBtn.Size=UDim2.fromOffset(160,50)
+claimBtn.Position=UDim2.fromOffset(0,0)
+claimBtn.BackgroundColor3=Color3.fromRGB(54,201,92)
+claimBtn.TextColor3=Color3.new(1,1,1)
+Instance.new("UICorner",claimBtn).CornerRadius=UDim.new(0,12)
+
+local rewardNow=Instance.new("TextLabel",footer)
+rewardNow.Size=UDim2.fromOffset(200,24)
+rewardNow.Position=UDim2.fromOffset(175,2)
+rewardNow.BackgroundTransparency=1
+rewardNow.Font=Enum.Font.Gotham
+rewardNow.TextSize=18
+rewardNow.TextColor3=Color3.fromRGB(225,235,255)
+rewardNow.TextXAlignment=Enum.TextXAlignment.Left
+
+local rewardNext=Instance.new("TextLabel",footer)
+rewardNext.Size=UDim2.fromOffset(200,22)
+rewardNext.Position=UDim2.fromOffset(175,28)
+rewardNext.BackgroundTransparency=1
+rewardNext.Font=Enum.Font.Gotham
+rewardNext.TextSize=16
+rewardNext.TextColor3=Color3.fromRGB(160,170,190)
+rewardNext.TextXAlignment=Enum.TextXAlignment.Left
+
+local timerLbl=Instance.new("TextLabel",footer)
+timerLbl.Size=UDim2.fromOffset(110,50)
+timerLbl.Position=UDim2.fromOffset(390,0)
+timerLbl.BackgroundColor3=Color3.fromRGB(38,41,55)
+timerLbl.TextColor3=Color3.fromRGB(255,215,0)
+timerLbl.Font=Enum.Font.GothamBold
+timerLbl.TextScaled=true
+timerLbl.Text="00:00:00"
+Instance.new("UICorner",timerLbl).CornerRadius=UDim.new(0,12)
+
+local function mmss(x)
+	local h=math.floor(x/3600)
+	local m=math.floor((x%3600)/60)
+	local s=x%60
+	return ("%02d:%02d:%02d"):format(h,m,s)
+end
+
+local function maybeOpen()
+	if frame.Visible then return end
+	frame.Size=UDim2.fromOffset(520,300)
+	frame.Visible=true
+	TweenService:Create(frame,TweenInfo.new(.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.fromOffset(520,330)}):Play()
+end
+
+local function refresh()
+	if not tiers or not rewards or not claimed or #cells==0 then return end
+	for i,b in ipairs(cells) do
+		local need=tiers[i]*60
+		local ready=secs>=need and not claimed[i]
+		local done=claimed[i] and secs>=need
+		if not ready then openedFor[i]=false end
+		if ready and not openedFor[i] then openedFor[i]=true maybeOpen() end
+		b.BackgroundColor3=done and Color3.fromRGB(55,165,85)
+			or ready and Color3.fromRGB(255,200,60)
+			or Color3.fromRGB(38,41,55)
+		b.Text=done and "✓ Claimed" or ready and "🎁 Ready!" or ("🎁 "..tiers[i].."m")
+	end
+	local nextIndex
+	for i=1,#tiers do if not claimed[i] then nextIndex=i break end end
+	if nextIndex then
+		local need=tiers[nextIndex]*60
+		local rem=math.max(0,need-secs)
+		timerLbl.Text=mmss(rem)
+		rewardNow.Text="Reward: "..rewards[nextIndex].." Coins"
+		local nxt=nextIndex<#tiers and rewards[nextIndex+1] or rewards[nextIndex]
+		rewardNext.Text="Next: "..nxt.." Coins"
+		claimBtn.Active=rem==0
+		claimBtn.BackgroundColor3=rem==0 and Color3.fromRGB(54,201,92) or Color3.fromRGB(90,95,110)
+	else
+		timerLbl.Text="DONE"
+		rewardNow.Text="All claimed"
+		rewardNext.Text=""
+		claimBtn.Active=false
+		claimBtn.BackgroundColor3=Color3.fromRGB(90,95,110)
+	end
+end
+
+claimBtn.MouseButton1Click:Connect(function()
+	if not tiers then return end
+	for i=1,#tiers do
+		if not claimed[i] and secs>=tiers[i]*60 then
+			ev:FireServer("claim",i)
+			break
+		end
+	end
+end)
+
+ev.OnClientEvent:Connect(function(cmd,payload)
+	if cmd=="init" then
+		tiers=payload.tiers
+		rewards=payload.rewards
+		secs=payload.secs
+		claimed=payload.claimed or {}
+		openedFor={}
+		for i=1,#tiers do
+			local b=Instance.new("TextButton",grid)
+			b.TextScaled=true
+			b.Font=Enum.Font.GothamBold
+			b.TextColor3=Color3.fromRGB(245,248,255)
+			b.Size=UDim2.fromOffset(150,50)
+			b.BackgroundColor3=Color3.fromRGB(38,41,55)
+			Instance.new("UICorner",b).CornerRadius=UDim.new(0,10)
+			cells[i]=b
+			openedFor[i]=false
+			b.MouseButton1Click:Connect(function()
+				if secs>=tiers[i]*60 and not claimed[i] then ev:FireServer("claim",i) end
+			end)
+		end
+		frame.Visible=true
+		refresh()
+	elseif cmd=="tick" then
+		if tiers then secs=payload refresh() end
+	elseif cmd=="claimed" then
+		if tiers then claimed[payload.i]=true refresh() end
+	end
+end)
+
+
