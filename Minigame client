@@ -4,9 +4,12 @@
 -- 23/08/2025
 ----------------------------------------
 
+
+-- gets the services I need
 local Players=game:GetService("Players")
 local RS=game:GetService("ReplicatedStorage")
 
+-- makes the remote events so the server is able to talk to the client
 local PromptRE=RS:FindFirstChild("MiniGamePromptRE") or Instance.new("RemoteEvent",RS)
 PromptRE.Name="MiniGamePromptRE"
 local JoinRE=RS:FindFirstChild("MiniGameJoinRE") or Instance.new("RemoteEvent",RS)
@@ -16,64 +19,73 @@ StartRE.Name="MiniGameStartRE"
 local EndRE=RS:FindFirstChild("MiniGameEndRE") or Instance.new("RemoteEvent",RS)
 EndRE.Name="MiniGameEndRE"
 
-local INTERVAL=30
-local DURATION=120
-local ACCEPT_WINDOW=10
+-- settings for the minigame
+local INTERVAL=30 -- how often (in seconds) it sends the prompt
+local DURATION=120 -- how long the game will last for (in seconds)
+local ACCEPT_WINDOW=10 -- how long the player has to click yes ( in seconds)
 
+-- gets the stuff from the workspace
 local arena=workspace:WaitForChild("MiniGame_Teleport")
 local exitPad=workspace:WaitForChild("MiniGame_Return")
 local coinsFolder=workspace:WaitForChild("MiniGameCoins")
 
+-- keeps track of whos playing and the coin connections
 local active={}
 local coinConns={}
 
+-- basically this makes the coins when its touched
 local function bindCoin(p)
-	if not p:IsA("BasePart") then return end
+	if not p:IsA("BasePart") then return end -- discounts the old one if it exists
 	if coinConns[p] then coinConns[p]:Disconnect() end
 	coinConns[p]=p.Touched:Connect(function(hit)
 		local plr=Players:GetPlayerFromCharacter(hit.Parent)
-		if not plr or not active[plr] then return end
+		if not plr or not active[plr] then return end -- only works if they're in game
 		local ls=plr:FindFirstChild("leaderstats"); if not ls then return end
 		local c=ls:FindFirstChild("Coins"); if not c then return end
-		local r=p:GetAttribute("Reward") or 1
-		c.Value+=r
-		p:Destroy()
+		local r=p:GetAttribute("Reward") or 1 -- gets the coin value
+		c.Value+=r -- adds the coins
+		p:Destroy() -- deletes the coin
 	end)
 end
 
+-- Connects all the coins that exist
 for _,d in ipairs(coinsFolder:GetDescendants()) do bindCoin(d) end
-coinsFolder.DescendantAdded:Connect(bindCoin)
+coinsFolder.DescendantAdded:Connect(bindCoin) -- connects the new coins as well
 
+-- teleports the player to the part
 local function tp(plr,part)
 	local ch=plr.Character; if not ch then return end
 	local hrp=ch:FindFirstChild("HumanoidRootPart"); if not hrp then return end
-	hrp.CFrame=part.CFrame+Vector3.new(0,3,0)
+	hrp.CFrame=part.CFrame+Vector3.new(0,3,0) -- moves the player up a bit
 end
 
+-- starting the mini game
 local function startFor(plr)
-	if active[plr] then return end
+	if active[plr] then return end -- doesnt restart if their already playing
 	active[plr]=true
-	local endsAt=os.time()+DURATION
-	tp(plr,arena)
-	StartRE:FireClient(plr,endsAt)
+	local endsAt=os.time()+DURATION -- when it ends
+	tp(plr,arena) -- the player gets sent to the arenea
+	StartRE:FireClient(plr,endsAt) -- tells the client to show the timerr
 	task.delay(DURATION,function()
 		if not active[plr] then return end
 		active[plr]=nil
-		tp(plr,exitPad)
-		EndRE:FireClient(plr)
+		tp(plr,exitPad) -- teleports them back
+		EndRE:FireClient(plr) -- sends a message to the client thats its over
 	end)
 end
 
+-- fires when player clicks yes
 JoinRE.OnServerEvent:Connect(function(plr)
 	if active[plr] then return end
 	startFor(plr)
 end)
 
+-- loop that keeps asking players to join
 task.spawn(function()
 	while true do
 		task.wait(INTERVAL)
 		for _,plr in ipairs(Players:GetPlayers()) do
-			if not active[plr] then
+			if not active[plr] then -- only asks people not in the game currently
 				PromptRE:FireClient(plr,ACCEPT_WINDOW)
 			end
 		end
@@ -90,23 +102,26 @@ Players.PlayerRemoving:Connect(function(p) active[p]=nil end)
 -- 23/08/2025
 ----------------------------------------
 
+-- getting services
 local RS=game:GetService("ReplicatedStorage")
 local TweenService=game:GetService("TweenService")
 local plr=game.Players.LocalPlayer
 
+-- waits for the remote events
 local PromptRE=RS:WaitForChild("MiniGamePromptRE")
 local JoinRE=RS:WaitForChild("MiniGameJoinRE")
 local StartRE=RS:WaitForChild("MiniGameStartRE")
 local EndRE=RS:WaitForChild("MiniGameEndRE")
 
 local FADE_TIME = 1.5
-
+-- creates the main GUI 
 local gui=Instance.new("ScreenGui")
 gui.Name="MiniGameUI"
 gui.IgnoreGuiInset=true
-gui.ResetOnSpawn=false
+gui.ResetOnSpawn=false -- stays when u die
 gui.Parent=plr:WaitForChild("PlayerGui")
 
+-- the frame that has the yes or no buttons
 local promptFrame=Instance.new("Frame",gui)
 promptFrame.Size=UDim2.new(0,420,0,70)
 promptFrame.Position=UDim2.new(0.5,-210,0.12,0)
@@ -115,6 +130,7 @@ promptFrame.Visible=false
 promptFrame.ZIndex=50
 Instance.new("UICorner",promptFrame).CornerRadius=UDim.new(1,0)
 
+-- the label at the top
 local lbl=Instance.new("TextLabel",promptFrame)
 lbl.Size=UDim2.new(1,-20,0,30)
 lbl.Position=UDim2.new(0,10,0,5)
@@ -125,7 +141,7 @@ lbl.TextColor3=Color3.new(1,1,1)
 lbl.TextStrokeTransparency=0
 lbl.ZIndex=51
 lbl.Text="Mini-Game starting!"
-
+-- the yes button
 local yesBtn=Instance.new("TextButton",promptFrame)
 yesBtn.Size=UDim2.new(0.4,0,0,30)
 yesBtn.Position=UDim2.new(0.05,0,1,-35)
@@ -137,6 +153,7 @@ yesBtn.TextColor3=Color3.new(1,1,1)
 yesBtn.ZIndex=51
 Instance.new("UICorner",yesBtn).CornerRadius=UDim.new(1,0)
 
+-- no button
 local noBtn=Instance.new("TextButton",promptFrame)
 noBtn.Size=UDim2.new(0.4,0,0,30)
 noBtn.Position=UDim2.new(0.55,0,1,-35)
@@ -148,6 +165,7 @@ noBtn.TextColor3=Color3.new(1,1,1)
 noBtn.ZIndex=51
 Instance.new("UICorner",noBtn).CornerRadius=UDim.new(1,0)
 
+-- timer that shows how much time is left
 local timerLbl=Instance.new("TextLabel",gui)
 timerLbl.Size=UDim2.new(0,320,0,60)
 timerLbl.Position=UDim2.new(0.5,-160,0.05,0)
@@ -159,6 +177,7 @@ timerLbl.TextStrokeTransparency=0
 timerLbl.Visible=false
 timerLbl.ZIndex=60
 
+-- circle for fade effect
 local iris=Instance.new("Frame",gui)
 iris.Size=UDim2.new(0,0,0,0)
 iris.Position=UDim2.new(0.5,0,0.5,0)
@@ -169,31 +188,36 @@ iris.Visible=false
 iris.ZIndex=100
 Instance.new("UICorner",iris).CornerRadius=UDim.new(1,0)
 
-local pending=false
-local acceptUntil=0
-local ticking=false
-local fadeLock=false
+-- variables to track the state
+local pending=false -- wwaits for yes or no 
+local acceptUntil=0 -- when prompt closes
+local ticking=false -- timer running
+local fadeLock=false -- stops multile fades at once
 
+-- the colours for the timer
 local colors={Color3.fromRGB(255,255,0),Color3.fromRGB(255,120,0),Color3.fromRGB(255,60,60),Color3.fromRGB(255,255,255)}
 
+-- turns the second into the MM:SS format
 local function fmt(n)
 	local m=math.floor(n/60)
 	local s=n%60
 	return string.format("%02d:%02d",m,s)
 end
 
+-- tweens the colour of the label
 local function tweenColor(label,toColor,time)
 	TweenService:Create(label,TweenInfo.new(time,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{TextColor3=toColor}):Play()
 end
 
+-- runs the timer and changes colours
 local function runTimer(endsAt)
 	ticking=true
 	timerLbl.Visible=true
 	local i=1
 	while ticking do
-		local left=math.max(0,endsAt-os.time())
+		local left=math.max(0,endsAt-os.time()) -- time remaining
 		timerLbl.Text="Time left: "..fmt(left)
-		i=(i%#colors)+1
+		i=(i%#colors)+1 -- cycles through the colourss
 		tweenColor(timerLbl,colors[i],0.5)
 		if left<=0 then break end
 		task.wait(1)
@@ -201,24 +225,27 @@ local function runTimer(endsAt)
 	timerLbl.Visible=false
 end
 
+-- Makes the circle transition
 local function circleFadeOnce(cb)
-	if fadeLock then return end
+	if fadeLock then return end -- donesnt run if it's already fading
 	fadeLock=true
 	local cam=workspace.CurrentCamera
 	local vp=cam and cam.ViewportSize or Vector2.new(1920,1080)
-	local d=math.ceil(math.sqrt(vp.X*vp.X+vp.Y*vp.Y))*1.9
+	local d=math.ceil(math.sqrt(vp.X*vp.X+vp.Y*vp.Y))*1.9 -- getd diameter
 
 	iris.Visible=true
 	iris.BackgroundTransparency=0
 	iris.Size=UDim2.new(0,0,0,0)
 
+-- groes the circle
 	local ease=TweenInfo.new(FADE_TIME,Enum.EasingStyle.Quint,Enum.EasingDirection.InOut)
 	local tGrow=TweenService:Create(iris,ease,{Size=UDim2.new(0,d,0,d)})
 	tGrow:Play()
 	tGrow.Completed:Wait()
 
-	if cb then cb() end
+	if cb then cb() end -- callback
 
+-- shrinks it back
 	local tShrink=TweenService:Create(iris,ease,{Size=UDim2.new(0,0,0,0)})
 	tShrink:Play()
 	tShrink.Completed:Wait()
@@ -227,6 +254,7 @@ local function circleFadeOnce(cb)
 	fadeLock=false
 end
 
+-- server sends prompt to join
 PromptRE.OnClientEvent:Connect(function(seconds)
 	local total=math.clamp(tonumber(seconds) or 10,5,10)
 	pending=true
@@ -235,38 +263,42 @@ PromptRE.OnClientEvent:Connect(function(seconds)
 	task.spawn(function()
 		while pending do
 			local left=math.max(0,math.floor(acceptUntil-tick()))
-			lbl.Text="Mini-Game starting! Join? ("..left..")"
+			lbl.Text="Mini-Game starting! Join? ("..left..")" -- updates the countdown
 			if left<=0 then break end
 			task.wait(1)
 		end
-		if pending then
+		if pending then -- closes if the time runs out
 			pending=false
 			promptFrame.Visible=false
 		end
 	end)
 end)
 
+-- when you click yes
 yesBtn.MouseButton1Click:Connect(function()
 	if not pending then return end
 	pending=false
 	promptFrame.Visible=false
-	JoinRE:FireServer()
+	JoinRE:FireServer() -- tells the server you have joined
 end)
 
+-- when you click no
 noBtn.MouseButton1Click:Connect(function()
 	if not pending then return end
 	pending=false
 	promptFrame.Visible=false
 end)
 
+-- game starts
 StartRE.OnClientEvent:Connect(function(endsAt)
-	circleFadeOnce(function() end) 
-	runTimer(endsAt)
+	circleFadeOnce(function() end) -- fade effect
+	runTimer(endsAt) -- starts timer
 end)
 
+-- game ends
 EndRE.OnClientEvent:Connect(function()
-	ticking=false
-	circleFadeOnce(function() end) 
+	ticking=false -- stops the timer
+	circleFadeOnce(function() end) -- fade back
 end)
 
 
